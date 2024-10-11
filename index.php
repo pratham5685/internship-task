@@ -2,77 +2,9 @@
 // Include the database connection file
 include 'db.php';
 
-// Initialize variables
-$name = $address = $email = "";
-$name_err = $address_err = $email_err = "";
-
-// Fetch dynamic fields from the leads table
-$dynamic_fields = [];
-$sql = "SHOW COLUMNS FROM leads";
+// Fetch all leads from the database
+$sql = "SELECT * FROM leads";
 $result = $conn->query($sql);
-
-// Store dynamic field names
-if ($result) {
-    while ($row = $result->fetch_assoc()) {
-        // Ignore predefined fields: 'name', 'address', 'email'
-        if (!in_array($row['Field'], ['id', 'name', 'address', 'email'])) {
-            $dynamic_fields[] = $row['Field'];
-        }
-    }
-}
-
-// Process form submission when the form is submitted
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // Validate name
-    if (empty(trim($_POST["name"]))) {
-        $name_err = "Please enter your name.";
-    } else {
-        $name = trim($_POST["name"]);
-    }
-
-    // Validate address
-    if (empty(trim($_POST["address"]))) {
-        $address_err = "Please enter your address.";
-    } else {
-        $address = trim($_POST["address"]);
-    }
-
-    // Validate email
-    if (empty(trim($_POST["email"]))) {
-        $email_err = "Please enter your email.";
-    } elseif (!filter_var($_POST["email"], FILTER_VALIDATE_EMAIL)) {
-        $email_err = "Invalid email format.";
-    } else {
-        $email = trim($_POST["email"]);
-    }
-
-    // Initialize array for dynamic field values
-    $dynamic_field_values = [];
-    foreach ($dynamic_fields as $field) {
-        if (!empty(trim($_POST[$field]))) {
-            $dynamic_field_values[$field] = trim($_POST[$field]);
-        }
-    }
-
-    // If no errors, insert data into the database
-    if (empty($name_err) && empty($address_err) && empty($email_err)) {
-        $sql = "INSERT INTO leads (name, address, email" . (count($dynamic_field_values) > 0 ? ', ' . implode(', ', array_keys($dynamic_field_values)) : '') . ") VALUES (?, ?, ?" . (count($dynamic_field_values) > 0 ? ', ' . str_repeat('?, ', count($dynamic_field_values) - 1) . '?' : '') . ")";
-        if ($stmt = $conn->prepare($sql)) {
-            $stmt->bind_param(str_repeat('s', 3 + count($dynamic_field_values)), $name, $address, $email, ...array_values($dynamic_field_values));
-
-            if ($stmt->execute()) {
-                // Redirect to the same page with success flag to trigger JavaScript pop-up
-                header("Location: " . $_SERVER['REQUEST_URI'] . "?success=1");
-                exit(); // Stop script execution after redirect
-            } else {
-                echo "Something went wrong. Please try again.";
-            }
-
-            // Close statement
-            $stmt->close();
-        }
-    }
-}
 ?>
 
 <!DOCTYPE html>
@@ -80,64 +12,120 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lead Form</title>
-    <script>
-        // Check if the URL contains 'success=1'
-        window.onload = function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.has('success') && urlParams.get('success') == '1') {
-                // Show a pop-up to indicate success
-                alert('Lead added successfully!');
-
-                // After the alert, redirect the user to remove 'success' from the URL
-                window.location.href = window.location.pathname; // This will reload the page without query params
-            }
+    <title>All Leads</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa;
         }
-    </script>
+        .sidebar {
+            height: 100vh;
+            background-color: #343a40;
+            padding: 20px;
+            position: fixed; /* Fixes the sidebar in place */
+            overflow-y: auto; /* Enables scrolling if content overflows */
+            width: 250px; /* Fixed width for the sidebar */
+        }
+        .sidebar a {
+            color: white;
+            text-decoration: none;
+            margin: 10px 0;
+            display: block;
+        }
+        .sidebar a:hover {
+            background-color: #495057;
+            padding: 10px;
+        }
+        .content {
+            margin-left: 260px; /* Adjust for fixed width sidebar */
+            padding: 20px;
+        }
+        h2 {
+            margin-bottom: 20px;
+            margin-top: 30px; /* Added top margin for title */
+        }
+        .card {
+            margin-bottom: 20px;
+        }
+        table {
+            margin: 0 auto; /* Center the table */
+            width: auto; /* Allow table to fit content */
+        }
+    </style>
 </head>
 <body>
 
-<h2>Lead Form</h2>
-
-<form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
-    <div>
-        <label>Name</label>
-        <input type="text" name="name" value="<?php echo $name; ?>">
-        <span style="color: red;"><?php echo $name_err; ?></span>
+<div class="d-flex flex-column flex-md-row">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <h2 class="text-white">Dashboard</h2>
+        <!-- <a href="all_leads.php">All Leads</a> -->
+        <a href="lead_form.php">Lead Form</a>
+        <a href="edit.php">Edit Lead Form</a>
+        <!-- Add more sidebar links as needed -->
     </div>
-    <br>
-    <div>
-        <label>Address</label>
-        <input type="text" name="address" value="<?php echo $address; ?>">
-        <span style="color: red;"><?php echo $address_err; ?></span>
+
+    <!-- Main Content -->
+    <div class="content">
+        <h2>All Leads</h2>
+        <div class="card">
+            <div class="card-body">
+                <table class="table table-bordered table-striped table-responsive">
+                    <thead class="thead-dark">
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Address</th>
+                            <th>Email</th>
+                            <?php
+                            // Fetch dynamic fields for table headers
+                            $dynamic_fields_sql = "SHOW COLUMNS FROM leads";
+                            $dynamic_fields_result = $conn->query($dynamic_fields_sql);
+                            while ($row = $dynamic_fields_result->fetch_assoc()) {
+                                // Skip predefined fields
+                                if (!in_array($row['Field'], ['id', 'name', 'address', 'email'])) {
+                                    echo "<th>" . ucfirst($row['Field']) . "</th>";
+                                }
+                            }
+                            ?>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        // Display each lead
+                        if ($result->num_rows > 0) {
+                            while ($lead = $result->fetch_assoc()) {
+                                echo "<tr>";
+                                echo "<td>" . $lead['id'] . "</td>";
+                                echo "<td>" . $lead['name'] . "</td>";
+                                echo "<td>" . $lead['address'] . "</td>";
+                                echo "<td>" . $lead['email'] . "</td>";
+
+                                // Display dynamic field values
+                                foreach ($dynamic_fields_result as $row) {
+                                    if (!in_array($row['Field'], ['id', 'name', 'address', 'email'])) {
+                                        echo "<td>" . (isset($lead[$row['Field']]) ? $lead[$row['Field']] : '') . "</td>";
+                                    }
+                                }
+                                echo "</tr>";
+                            }
+                        } else {
+                            echo "<tr><td colspan='4'>No leads found</td></tr>";
+                        }
+                        ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
-    <br>
-    <div>
-        <label>Email</label>
-        <input type="text" name="email" value="<?php echo $email; ?>">
-        <span style="color: red;"><?php echo $email_err; ?></span>
-    </div>
-    <br>
-
-    <!-- Display dynamic fields -->
-    <?php foreach ($dynamic_fields as $field): ?>
-    <div>
-        <label><?php echo ucfirst($field); ?></label>
-        <input type="text" name="<?php echo $field; ?>">
-    </div>
-    <br>
-    <?php endforeach; ?>
-
-
-
-<div>
-    <input type="submit" value="Submit">
-    <button type="button" onclick="window.location.href='edit.php'">Edit</button>
 </div>
 
-
-</form>
-
+<!-- Bootstrap JS and dependencies -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.0.7/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 </body>
 </html>
-
